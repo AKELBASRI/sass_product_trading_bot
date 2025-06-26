@@ -1,0 +1,18 @@
+FROM python:3.9-slim
+
+WORKDIR /app
+
+# Install dependencies
+RUN pip install --no-cache-dir \
+    mt5linux \
+    redis \
+    pyzmq \
+    pandas==2.0.3 \
+    numpy==1.24.3 \
+    python-dateutil
+
+# Copy connector script
+COPY mt5_connector_wine_adapter.py .
+
+# Run the connector
+CMD ["python", "mt5_connector_wine_adapter.py"]

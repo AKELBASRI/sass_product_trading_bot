@@ -1,0 +1,353 @@
+# Create a comprehensive project overview
+echo "=== DIRECTORY STRUCTURE ===" > project_bot_structure.txt
+echo "" >> project_bot_structure.txt
+# Show directory structure with indentation, excluding /config/.wine, .git, /backups, and __pycache__
+find /root/trading-system/frontend/ -path "*/config/.wine" -prune -o -path "*/.git" -prune -o -path "*/backups" -prune -o -path "*/__pycache__" -prune -o -print | grep -v -E "(/config/.wine|/\.git|/backups|/__pycache__)" | sed -e 's;[^/]*/;|____;g;s;____|;  |;g' >> project_bot_structure.txt
+echo "" >> project_bot_structure.txt
+echo "=== FILE CONTENTS ===" >> project_bot_structure.txt
+# Add contents of text-based files, excluding /config/.wine, .git, /backups, and __pycache__
+find /root/trading-system/frontend/ -path "*/config/.wine" -prune -o -path "*/.git" -prune -o -path "*/backups" -prune -o -path "*/__pycache__" -prune -o -type f \( -name "*.py" -o -name "*.txt" -o -name "*.json" -o -name "*.yml" -o -name "*.yaml" -o -name "*.conf" -o -name "*.sh" -o -name "*.md" \) -print | while read file; do
+    echo "" >> project_bot_structure.txt
+    echo "--- $file ---" >> project_bot_structure.txt
+    cat "$file" >> project_bot_structure.txt 2>/dev/null || echo "[Could not read file]" >> project_bot_structure.txt
+done
+
+
+# Stop all containers
+docker compose down
+
+# Remove all images related to your project
+docker images | grep trading | awk '{print $3}' | xargs docker rmi -f
+
+# Remove all volumes (WARNING: This will delete all data)
+docker volume prune -f
+
+docker compose -f docker-compose.working.yml down
+docker compose -f docker-compose.working.yml build --no-cache
+docker compose -f docker-compose.working.yml up -d
+cd. .
+
+# Stop existing services
+docker compose -f docker-compose.working.yml down
+
+# Start with Flask dashboard
+docker compose -f docker-compose.flask.yml up -d
+docker compose -f docker-compose.react.yml down 
+
+docker compose -f docker-compose.react.yml  build --no-cache
+docker compose -f docker-compose.react.yml up -d
+
+# Check logs
+docker logs flask-dashboard
+
+docker logs  trading-backend
+
+
+
+
+# Create a simple working backend with hardcoded MT5 detection
+docker exec -it trading-backend bash -c '
+cat > backend_service_working.py << "EOF"
+"""
+Working Trading Backend Service
+"""
+
+import asyncio
+import json
+import logging
+import time
+from datetime import datetime
+from typing import Dict, Any, List, Optional
+import redis
+import uvicorn
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+class SystemStatus(BaseModel):
+    running: bool
+    last_update: str
+    current_time: str
+    error: Optional[str] = None
+    redis_connected: bool = False
+    mt5_connected: bool = False
+    active_symbols: List[str] = []
+
+class HealthResponse(BaseModel):
+    status: str
+    timestamp: str
+    components: Dict[str, bool]
+    details: Dict[str, Any]
+
+class WorkingBackend:
+    def __init__(self):
+        try:
+            self.redis_client = redis.Redis(host="redis", port=6379, decode_responses=True)
+            self.redis_client.ping()
+            logger.info("Connected to Redis")
+            self.redis_connected = True
+        except:
+            logger.error("Failed to connect to Redis")
+            self.redis_connected = False
+        
+        self.is_running = False
+        self.last_update = datetime.now()
+        self.error_message = None
+        
+        # Check for MT5 data directly
+        self.mt5_data_available = self._check_mt5_data()
+        logger.info(f"MT5 data available: {self.mt5_data_available}")
+    
+    def _check_mt5_data(self):
+        """Check if MT5 data exists in Redis"""
+        try:
+            if self.redis_connected:
+                ohlc_keys = self.redis_client.keys("mt5:ohlc:*")
+                return len(ohlc_keys) > 0
+            return False
+        except:
+            return False
+    
+    async def start(self):
+        self.is_running = True
+        self.error_message = None
+        self.last_update = datetime.now()
+        logger.info("Trading system started")
+    
+    async def stop(self):
+        self.is_running = False
+        logger.info("Trading system stopped")
+    
+    def get_status(self):
+        return {
+            "running": self.is_running,
+            "last_update": self.last_update.isoformat(),
+            "current_time": datetime.now().isoformat(),
+            "error": self.error_message,
+            "redis_connected": self.redis_connected,
+            "mt5_connected": self.mt5_data_available,
+            "active_symbols": ["EURUSD", "GBPUSD", "USDJPY", "USDCHF", "USDCAD", "AUDUSD"] if self.mt5_data_available else []
+        }
+    
+    def get_health(self):
+        # Get OHLC keys directly
+        ohlc_keys = []
+        if self.redis_connected:
+            try:
+                ohlc_keys = self.redis_client.keys("mt5:ohlc:*")
+            except:
+                pass
+        
+        return {
+            "status": "healthy" if self.redis_connected and self.mt5_data_available else "degraded",
+            "timestamp": datetime.now().isoformat(),
+            "components": {
+                "redis": self.redis_connected,
+                "mt5": self.mt5_data_available,
+                "system": self.is_running
+            },
+            "details": {
+                "redis": {
+                    "connected": self.redis_connected,
+                    "keys": self.redis_client.keys("*")[:20] if self.redis_connected else [],
+                },
+                "mt5": {
+                    "data_available": self.mt5_data_available,
+                    "ohlc_keys": ohlc_keys
+                },
+                "system": {
+                    "running": self.is_running,
+                    "last_update": self.last_update.isoformat()
+                }
+            }
+        }
+    
+    def redis_test(self):
+        if not self.redis_connected:
+            raise HTTPException(status_code=503, detail="Redis not connected")
+        
+        try:
+            all_keys = self.redis_client.keys("*")
+            mt5_keys = [k for k in all_keys if k.startswith("mt5:")]
+            ohlc_keys = [k for k in all_keys if "mt5:ohlc" in k]
+            
+            # Test write/read
+            test_key = "test_key"
+            test_value = f"test_{datetime.now().isoformat()}"
+            self.redis_client.set(test_key, test_value, ex=60)
+            retrieved = self.redis_client.get(test_key)
+            
+            return {
+                "connected": True,
+                "keys": all_keys[:50],
+                "test_write": True,
+                "test_read": retrieved == test_value,
+                "mt5_data_keys": ohlc_keys,
+                "mt5_all_keys": mt5_keys[:10]
+            }
+        except Exception as e:
+            return {"connected": False, "error": str(e)}
+
+# FastAPI app
+app = FastAPI(title="Working Trading Backend", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+backend = WorkingBackend()
+
+@app.get("/status", response_model=SystemStatus)
+async def get_status():
+    status_data = backend.get_status()
+    return SystemStatus(**status_data)
+
+@app.get("/health", response_model=HealthResponse)
+async def health_check():
+    health_data = backend.get_health()
+    return HealthResponse(**health_data)
+
+@app.post("/start")
+async def start_system():
+    await backend.start()
+    return {"message": "System started"}
+
+@app.post("/stop")
+async def stop_system():
+    await backend.stop()
+    return {"message": "System stopped"}
+
+@app.get("/redis-test")
+async def redis_test():
+    return backend.redis_test()
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+EOF
+
+# Replace the current backend with the working one
+mv backend_service.py backend_service_broken.py
+mv backend_service_working.py backend_service.py
+'
+
+# Restart with the new working backend
+docker compose -f docker-compose.react.yml restart trading-backend
+sleep 10
+
+# Test the new backend
+echo "🚀 Testing the working backend:"
+curl -s http://localhost:8009/health | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+print('Health Status:')
+print(f'  MT5 connected: {data[\"components\"][\"mt5\"]}')
+print(f'  Redis connected: {data[\"components\"][\"redis\"]}')
+print(f'  OHLC keys: {len(data[\"details\"][\"mt5\"].get(\"ohlc_keys\", []))}')
+for key in data[\"details\"][\"mt5\"].get(\"ohlc_keys\", [])[:3]:
+    print(f'    📊 {key}')
+"
+
+# Also test the status endpoint
+curl -s http://localhost:8009/status | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+print('\\nStatus:')
+print(f'  Trading system running: {data[\"running\"]}')
+print(f'  MT5 connected: {data[\"mt5_connected\"]}')
+print(f'  Active symbols: {data[\"active_symbols\"]}')
+"
+
+docker compose  -f docker-compose.react.yml   build trading-backend
+docker compose  -f docker-compose.react.yml down
+docker compose  -f docker-compose.react.yml up   trading-backend -d
+
+docker compose  -f docker-compose.react.yml build 
+docker logs trading-backend -f
+
+docker logs mt5-connector -f
+docker exec trading-redis redis-cli KEYS "mt5:*"
+
+# Test MT5 Data Commands
+# Make sure your Docker services are running first: docker-compose up -d
+
+# 1. Check overall system status and MT5 connection
+curl -X GET "http://localhost:8009/status" | jq
+
+# 2. Check health status with detailed component info
+curl -X GET "http://localhost:8009/health" | jq
+
+# 3. Test Redis connection and see MT5 keys
+curl -X GET "http://localhost:8009/redis-test" | jq
+
+# 4. Get all available trading symbols
+curl -X GET "http://localhost:8009/symbols" | jq
+
+# 5. See all Redis keys (debug)
+curl -X GET "http://localhost:8009/redis-keys" | jq
+
+# 6. Get OHLC data for EURUSD (most common pair)
+curl -X GET "http://localhost:8009/ohlc/EURUSD?timeframe=15&limit=10" | jq
+
+# 7. Get raw Redis data to inspect the actual format
+curl -X GET "http://localhost:8009/debug-raw/EURUSD?timeframe=15" | jq
+
+# 8. Get DataFrame format with statistics
+curl -X GET "http://localhost:8009/ohlc/EURUSD/dataframe?timeframe=15&limit=50" | jq
+
+# 9. Test multiple currency pairs
+curl -X GET "http://localhost:8009/ohlc/GBPUSD?limit=5" | jq
+curl -X GET "http://localhost:8009/ohlc/USDJPY?limit=5" | jq
+
+# 10. Check if data is updating (run this twice with some delay)
+echo "First check:"
+curl -X GET "http://localhost:8009/ohlc/EURUSD?limit=1" | jq '.data[0].timestamp'
+echo "Waiting 30 seconds..."
+sleep 30
+echo "Second check:"
+curl -X GET "http://localhost:8009/ohlc/EURUSD?limit=1" | jq '.data[0].timestamp'
+
+# Alternative: One-liner to check if you have real MT5 data
+curl -s "http://localhost:8009/health" | jq '.components.mt5 and .details.mt5.data_available'
+
+# Check Docker logs for MT5 connector
+docker logs mt5-connector --tail=50
+
+# Check if Redis has MT5 data directly
+docker exec trading-redis redis-cli keys "mt5:*"
+
+# Get a sample of actual Redis data
+docker exec trading-redis redis-cli get "mt5:ohlc:EURUSD:15" | head -c 200
+
+
+# Docker Cleanup Commands
+
+# 1. First, stop ALL containers
+docker stop $(docker ps -aq)
+
+# 2. Remove all containers (including the problematic react-dashboard)
+docker rm $(docker ps -aq)
+
+# 3. Remove the problematic network
+docker network rm trading-system_trading-network
+
+# 4. Remove any other conflicting networks
+docker network prune -f
+
+# 5. List remaining networks to check
+docker network ls
+
+# 6. If there are still issues, force remove any remaining containers
+docker container prune -f
+
+# 7. Remove unused images to free space
+docker image prune -f
+
+# 8. Show what's still running
+docker ps -a

@@ -1,0 +1,90 @@
+services:
+  # Direct connector (generates demo data for now)
+  mt5-connector:
+    build:
+      context: .
+      dockerfile: Dockerfile.direct
+    container_name: mt5-connector
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - trading-network
+
+  # Redis Service
+  redis:
+    image: redis:7-alpine
+    container_name: trading-redis
+    ports:
+      - "6382:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - trading-network
+
+  # Trading Backend Service
+  trading-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: trading-backend
+    environment:
+      - PYTHONUNBUFFERED=1
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - redis
+      - mt5-connector
+    volumes:
+      - ./trading_system:/app/trading_system
+      - ./logs:/app/logs
+    ports:
+      - "8009:8000"
+    restart: unless-stopped
+    networks:
+      - trading-network
+
+  # Dashboard Service
+  trading-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: trading-dashboard
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - API_URL=http://trading-backend:8000
+    depends_on:
+      - redis
+      - trading-backend
+    volumes:
+      - ./dashboard.py:/app/dashboard.py
+      - ./.streamlit:/app/.streamlit
+    ports:
+      - "8502:8501"
+    restart: unless-stopped
+    networks:
+      - trading-network
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: trading-nginx
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "6080:80"
+    depends_on:
+      - trading-dashboard
+      - trading-backend
+    restart: unless-stopped
+    networks:
+      - trading-network
+
+volumes:
+  redis_data:
+
+networks:
+  trading-network:
+    driver: bridge

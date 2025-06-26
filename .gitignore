@@ -1,0 +1,11 @@
+mt5_env/
+mt5-config/
+*.msi
+*.exe
+.wine/
+.cache/
+__pycache__/
+*.pyc
+*.pyo
+*.log
+.env

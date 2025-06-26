@@ -1,0 +1,105 @@
+# docker-compose.yml - Updated configuration
+
+services:
+  # MetaTrader 5 Linux Service
+  mt5-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.mt5
+    container_name: trading-mt5
+    environment:
+      - MT5_LOGIN=7920878
+      - MT5_PASSWORD=Srm@2025
+      - MT5_SERVER=Eightcap-Demo
+      - DISPLAY=:99
+      - ENABLE_VNC=true
+    volumes:
+      - ./mt5_connector_enhanced.py:/app/mt5_connector_enhanced.py
+      - ./logs:/app/logs
+    ports:
+      - "5900:5900"  # VNC for debugging
+      - "18812:18812"  # mt5linux port
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - trading-network
+
+  # Redis Service
+  redis:
+    image: redis:7-alpine
+    container_name: trading-redis
+    ports:
+      - "6381:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    networks:
+      - trading-network
+
+  # Trading Backend Service
+  trading-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: trading-backend
+    environment:
+      - PYTHONUNBUFFERED=1
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - redis
+      - mt5-service
+    volumes:
+      - ./trading_system:/app/trading_system
+      - ./logs:/app/logs
+    ports:
+      - "8001:8000"
+    restart: unless-stopped
+    networks:
+      - trading-network
+
+  # Dashboard Service
+  trading-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: trading-dashboard
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - API_URL=http://trading-backend:8000
+    depends_on:
+      - redis
+      - trading-backend
+    volumes:
+      - ./dashboard.py:/app/dashboard.py
+      - ./.streamlit:/app/.streamlit
+    ports:
+      - "8501:8501"
+    restart: unless-stopped
+    networks:
+      - trading-network
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: trading-nginx
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "80:80"
+    depends_on:
+      - trading-dashboard
+      - trading-backend
+    restart: unless-stopped
+    networks:
+      - trading-network
+
+volumes:
+  redis_data:
+
+networks:
+  trading-network:
+    driver: bridge
