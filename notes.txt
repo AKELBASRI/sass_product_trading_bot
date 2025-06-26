@@ -381,3 +381,6 @@ docker exec trading-redis redis-cli get "mt5:stream:EURUSD:latest" | jq .
 basheval "$(ssh-agent -s)"
 2. Add your GitHub key to the agent:
 bashssh-add ~/.ssh/id_ed25519_github
+
+activate virtual environement 
+source mt5_env/bin/activate
