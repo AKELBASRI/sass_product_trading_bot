@@ -373,3 +373,11 @@ docker ps -a
 
  # Get live streaming data
 docker exec trading-redis redis-cli get "mt5:stream:EURUSD:latest" | jq .
+
+
+
+
+1. First, start the SSH agent:
+basheval "$(ssh-agent -s)"
+2. Add your GitHub key to the agent:
+bashssh-add ~/.ssh/id_ed25519_github
