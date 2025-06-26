@@ -369,3 +369,7 @@ docker ps -a
  create mode 100644 streamviewer.py
  create mode 100644 websocket_streamer.py
  create mode 100644 working_dashboard.html
+
+
+ # Get live streaming data
+docker exec trading-redis redis-cli get "mt5:stream:EURUSD:latest" | jq .
