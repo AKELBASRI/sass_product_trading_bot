@@ -351,3 +351,21 @@ docker image prune -f
 
 # 8. Show what's still running
 docker ps -a
+
+
+ create mode 100644  redis_data_explorer.py
+ create mode 100644 Dockerfile.stream-creator
+ create mode 100644 Dockerfile.websocket-streamer
+ create mode 100644 create_ohlc_data.py
+ create mode 100644 dashboard.html
+ create mode 100644 dashboard/index.html
+ create mode 100644 docker-compose copy.yml
+ create mode 100644 final_setup.sh
+ create mode 100644 populate_current_data.py
+ create mode 100755 quick_redis_check.py
+ create mode 100644 requirements-stream.txt
+ create mode 100644 requirements-websocket.txt
+ create mode 100644 streaming_setup.sh
+ create mode 100644 streamviewer.py
+ create mode 100644 websocket_streamer.py
+ create mode 100644 working_dashboard.html
