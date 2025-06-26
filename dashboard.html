@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Trading Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #1a1a1a;
+            color: #e8e8e8;
+            margin: 0;
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .controls {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .btn {
+            background: #007cba;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .btn:hover {
+            background: #005a87;
+        }
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .symbol-card {
+            background: #2a2a2a;
+            border: 1px solid #444;
+            border-radius: 10px;
+            padding: 20px;
+            transition: all 0.3s ease;
+        }
+        .symbol-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,123,186,0.3);
+        }
+        .symbol-name {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #007cba;
+            margin-bottom: 15px;
+        }
+        .price-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .price-item {
+            text-align: center;
+            padding: 10px;
+            background: #333;
+            border-radius: 5px;
+        }
+        .price-label {
+            font-size: 0.8em;
+            color: #aaa;
+            margin-bottom: 5px;
+        }
+        .price-value {
+            font-size: 1.2em;
+            font-weight: bold;
+            font-family: monospace;
+        }
+        .bid { color: #ff6b6b; }
+        .ask { color: #51cf66; }
+        .spread { color: #ffd43b; }
+        .stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        .stat-item {
+            text-align: center;
+            padding: 8px;
+            background: #333;
+            border-radius: 5px;
+        }
+        .trend-up { color: #44ff44; }
+        .trend-down { color: #ff4444; }
+        .status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .status.connected {
+            background: #44ff44;
+            color: #000;
+        }
+        .status.disconnected {
+            background: #ff4444;
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <div id="status" class="status disconnected">Disconnected</div>
+    
+    <div class="header">
+        <h1>🚀 Real-Time Trading Dashboard</h1>
+    </div>
+    
+    <div class="controls">
+        <button class="btn" onclick="startStream()">▶️ Start Stream</button>
+        <button class="btn" onclick="stopStream()">⏹️ Stop Stream</button>
+        <button class="btn" onclick="reconnect()">🔄 Reconnect</button>
+    </div>
+    
+    <div class="dashboard" id="dashboard">
+        <div style="text-align: center; grid-column: 1/-1; padding: 40px;">
+            <div style="font-size: 1.2em; color: #aaa;">Connecting...</div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        const symbols = ['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD'];
+        
+        function connect() {
+            const wsUrl = `ws://${window.location.hostname}:8010/ws`;
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                console.log('Connected');
+                document.getElementById('status').textContent = 'Connected';
+                document.getElementById('status').className = 'status connected';
+                subscribeToSymbols();
+                createCards();
+            };
+            
+            ws.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                if (message.type === 'tick') {
+                    updateCard(message.symbol, message.data);
+                }
+            };
+            
+            ws.onclose = () => {
+                console.log('Disconnected');
+                document.getElementById('status').textContent = 'Disconnected';
+                document.getElementById('status').className = 'status disconnected';
+                setTimeout(connect, 3000);
+            };
+        }
+        
+        function subscribeToSymbols() {
+            symbols.forEach(symbol => {
+                ws.send(JSON.stringify({action: 'subscribe', symbol: symbol}));
+            });
+        }
+        
+        function createCards() {
+            const dashboard = document.getElementById('dashboard');
+            dashboard.innerHTML = '';
+            
+            symbols.forEach(symbol => {
+                const card = document.createElement('div');
+                card.className = 'symbol-card';
+                card.id = `card-${symbol}`;
+                card.innerHTML = `
+                    <div class="symbol-name">${symbol}</div>
+                    <div class="price-grid">
+                        <div class="price-item">
+                            <div class="price-label">BID</div>
+                            <div class="price-value bid" id="bid-${symbol}">--.-----</div>
+                        </div>
+                        <div class="price-item">
+                            <div class="price-label">ASK</div>
+                            <div class="price-value ask" id="ask-${symbol}">--.-----</div>
+                        </div>
+                        <div class="price-item">
+                            <div class="price-label">SPREAD</div>
+                            <div class="price-value spread" id="spread-${symbol}">-- pips</div>
+                        </div>
+                    </div>
+                    <div class="stats">
+                        <div class="stat-item">
+                            <div class="price-label">Change</div>
+                            <div class="price-value" id="change-${symbol}">+0.0000</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="price-label">Change %</div>
+                            <div class="price-value" id="changePct-${symbol}">+0.00%</div>
+                        </div>
+                    </div>
+                `;
+                dashboard.appendChild(card);
+            });
+        }
+        
+        function updateCard(symbol, data) {
+            document.getElementById(`bid-${symbol}`).textContent = data.bid.toFixed(5);
+            document.getElementById(`ask-${symbol}`).textContent = data.ask.toFixed(5);
+            document.getElementById(`spread-${symbol}`).textContent = `${data.spread_pips} pips`;
+            
+            const changeEl = document.getElementById(`change-${symbol}`);
+            const changePctEl = document.getElementById(`changePct-${symbol}`);
+            
+            const trendClass = data.price_change >= 0 ? 'trend-up' : 'trend-down';
+            const changeSign = data.price_change >= 0 ? '+' : '';
+            
+            changeEl.textContent = `${changeSign}${data.price_change.toFixed(5)}`;
+            changeEl.className = `price-value ${trendClass}`;
+            
+            changePctEl.textContent = `${changeSign}${data.price_change_pct.toFixed(2)}%`;
+            changePctEl.className = `price-value ${trendClass}`;
+        }
+        
+        async function startStream() {
+            try {
+                const response = await fetch('/start-stream');
+                const result = await response.json();
+                console.log('Stream started:', result);
+            } catch (error) {
+                console.error('Failed to start stream:', error);
+            }
+        }
+        
+        async function stopStream() {
+            try {
+                const response = await fetch('/stop-stream');
+                const result = await response.json();
+                console.log('Stream stopped:', result);
+            } catch (error) {
+                console.error('Failed to stop stream:', error);
+            }
+        }
+        
+        function reconnect() {
+            if (ws) ws.close();
+            connect();
+        }
+        
+        // Start connection when page loads
+        window.onload = connect;
+    </script>
+</body>
+</html>

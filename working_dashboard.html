@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Trading Dashboard</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            margin-bottom: 10px;
+        }
+        
+        .status-bar {
+            background: rgba(255,255,255,0.15);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            backdrop-filter: blur(10px);
+        }
+        
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ff4444;
+            display: inline-block;
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-indicator.connected {
+            background: #44ff44;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        
+        .controls {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .btn {
+            background: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: white;
+            padding: 12px 24px;
+            margin: 0 10px;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        
+        .btn:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-2px);
+        }
+        
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 25px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .symbol-card {
+            background: rgba(255,255,255,0.15);
+            border-radius: 15px;
+            padding: 25px;
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255,255,255,0.2);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .symbol-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+        }
+        
+        .symbol-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.2);
+        }
+        
+        .symbol-card.trend-up::before {
+            background: linear-gradient(90deg, #44ff44, #33cc33);
+        }
+        
+        .symbol-card.trend-down::before {
+            background: linear-gradient(90deg, #ff4444, #cc3333);
+        }
+        
+        .symbol-name {
+            font-size: 1.6rem;
+            font-weight: bold;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .price-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .price-item {
+            text-align: center;
+            padding: 15px 10px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+        }
+        
+        .price-label {
+            font-size: 0.8rem;
+            opacity: 0.8;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .price-value {
+            font-size: 1.3rem;
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .bid { color: #ff6b6b; }
+        .ask { color: #51cf66; }
+        .spread { color: #ffd43b; }
+        
+        .trend-info {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .trend-item {
+            text-align: center;
+            padding: 10px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+        }
+        
+        .trend-value.up { color: #44ff44; }
+        .trend-value.down { color: #ff4444; }
+        .trend-value.neutral { color: #ffaa44; }
+        
+        .last-update {
+            text-align: center;
+            font-size: 0.8rem;
+            opacity: 0.7;
+            margin-top: 15px;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 60px;
+            grid-column: 1/-1;
+        }
+        
+        .spinner {
+            border: 3px solid rgba(255,255,255,0.3);
+            border-top: 3px solid #ffffff;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .message {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            text-align: center;
+        }
+        
+        .error { background: rgba(255,68,68,0.2); border: 1px solid #ff4444; }
+        .success { background: rgba(68,255,68,0.2); border: 1px solid #44ff44; }
+        .info { background: rgba(68,170,255,0.2); border: 1px solid #44aaff; }
+        
+        @media (max-width: 768px) {
+            .dashboard { grid-template-columns: 1fr; }
+            .status-bar { flex-direction: column; gap: 10px; }
+            .btn { display: block; margin: 10px auto; width: 200px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📊 Real-Time Trading Dashboard</h1>
+        <p>Live market data from your MT5 system</p>
+    </div>
+
+    <div class="status-bar">
+        <div>
+            <span class="status-indicator" id="dataStatus"></span>
+            <span>Data Source: <span id="dataText">Checking...</span></span>
+        </div>
+        <div>
+            <span class="status-indicator" id="serverStatus"></span>
+            <span>Server: <span id="serverText">Checking...</span></span>
+        </div>
+        <div>
+            Last Update: <span id="lastUpdate">--:--:--</span>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button class="btn" onclick="refreshData()">🔄 Refresh Now</button>
+        <button class="btn" onclick="toggleAutoRefresh()">⏱️ Auto: <span id="autoStatus">Off</span></button>
+        <button class="btn" onclick="startStreaming()">🚀 Start Streaming</button>
+        <button class="btn" onclick="checkHealth()">💊 Health Check</button>
+    </div>
+
+    <div id="messageArea"></div>
+
+    <div class="dashboard" id="dashboard">
+        <div class="loading">
+            <div class="spinner"></div>
+            Loading market data...
+        </div>
+    </div>
+
+    <script>
+        const symbols = ['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD'];
+        let autoRefreshInterval = null;
+        let isLoading = false;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            loadData();
+            checkServerStatus();
+        });
+
+        async function loadData() {
+            if (isLoading) return;
+            isLoading = true;
+            
+            const dashboard = document.getElementById('dashboard');
+            
+            try {
+                showMessage('Loading market data...', 'info');
+                
+                // Clear dashboard
+                dashboard.innerHTML = '';
+                
+                // Create cards for each symbol
+                for (const symbol of symbols) {
+                    const card = createSymbolCard(symbol);
+                    dashboard.appendChild(card);
+                    
+                    // Load data for this symbol
+                    await loadSymbolData(symbol);
+                }
+                
+                updateLastUpdateTime();
+                updateStatus('connected', 'Stream Data');
+                clearMessage();
+                
+            } catch (error) {
+                showMessage(`Error loading data: ${error.message}`, 'error');
+                updateStatus('disconnected', 'Error');
+            } finally {
+                isLoading = false;
+            }
+        }
+
+        function createSymbolCard(symbol) {
+            const card = document.createElement('div');
+            card.className = 'symbol-card';
+            card.id = `card-${symbol}`;
+            
+            card.innerHTML = `
+                <div class="symbol-name">${symbol}</div>
+                <div class="price-grid">
+                    <div class="price-item">
+                        <div class="price-label">Bid</div>
+                        <div class="price-value bid" id="bid-${symbol}">--.-----</div>
+                    </div>
+                    <div class="price-item">
+                        <div class="price-label">Ask</div>
+                        <div class="price-value ask" id="ask-${symbol}">--.-----</div>
+                    </div>
+                    <div class="price-item">
+                        <div class="price-label">Spread</div>
+                        <div class="price-value spread" id="spread-${symbol}">-- pips</div>
+                    </div>
+                </div>
+                <div class="trend-info">
+                    <div class="trend-item">
+                        <div class="price-label">Change</div>
+                        <div class="trend-value" id="change-${symbol}">+0.0000</div>
+                    </div>
+                    <div class="trend-item">
+                        <div class="price-label">Trend</div>
+                        <div class="trend-value" id="trend-${symbol}">●</div>
+                    </div>
+                </div>
+                <div class="last-update" id="update-${symbol}">Loading...</div>
+            `;
+            
+            return card;
+        }
+
+        async function loadSymbolData(symbol) {
+            try {
+                // Try the latest-tick endpoint
+                const response = await fetch(`http://localhost:8010/latest-tick/${symbol}`);
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.data) {
+                        updateSymbolDisplay(symbol, result.data, result.source || 'stream');
+                        return;
+                    }
+                }
+                
+                // If that fails, show no data
+                updateSymbolDisplay(symbol, null, 'none');
+                
+            } catch (error) {
+                console.error(`Error loading ${symbol}:`, error);
+                updateSymbolDisplay(symbol, null, 'error');
+            }
+        }
+
+        function updateSymbolDisplay(symbol, data, source) {
+            const bidEl = document.getElementById(`bid-${symbol}`);
+            const askEl = document.getElementById(`ask-${symbol}`);
+            const spreadEl = document.getElementById(`spread-${symbol}`);
+            const changeEl = document.getElementById(`change-${symbol}`);
+            const trendEl = document.getElementById(`trend-${symbol}`);
+            const updateEl = document.getElementById(`update-${symbol}`);
+            const cardEl = document.getElementById(`card-${symbol}`);
+            
+            if (data) {
+                // Update prices
+                bidEl.textContent = data.bid ? data.bid.toFixed(5) : 'N/A';
+                askEl.textContent = data.ask ? data.ask.toFixed(5) : 'N/A';
+                spreadEl.textContent = data.spread_pips ? `${data.spread_pips} pips` : 'N/A';
+                
+                // Update trend information
+                if (data.price_change !== undefined) {
+                    const changeSign = data.price_change >= 0 ? '+' : '';
+                    changeEl.textContent = `${changeSign}${data.price_change.toFixed(5)}`;
+                    
+                    const trendClass = data.trend || (data.price_change >= 0 ? 'up' : 'down');
+                    changeEl.className = `trend-value ${trendClass}`;
+                    
+                    // Update trend indicator
+                    const trendSymbol = trendClass === 'up' ? '▲' : trendClass === 'down' ? '▼' : '●';
+                    trendEl.textContent = trendSymbol;
+                    trendEl.className = `trend-value ${trendClass}`;
+                    
+                    // Update card style
+                    cardEl.className = `symbol-card trend-${trendClass}`;
+                } else {
+                    changeEl.textContent = '0.0000';
+                    trendEl.textContent = '●';
+                    cardEl.className = 'symbol-card';
+                }
+                
+                updateEl.textContent = `${new Date().toLocaleTimeString()} (${source})`;
+            } else {
+                bidEl.textContent = 'N/A';
+                askEl.textContent = 'N/A';
+                spreadEl.textContent = 'N/A';
+                changeEl.textContent = 'N/A';
+                trendEl.textContent = '○';
+                updateEl.textContent = 'No data available';
+                cardEl.className = 'symbol-card';
+            }
+        }
+
+        async function refreshData() {
+            showMessage('Refreshing data...', 'info');
+            await loadData();
+            showMessage('Data refreshed successfully!', 'success');
+        }
+
+        async function startStreaming() {
+            try {
+                showMessage('Starting data streaming...', 'info');
+                const response = await fetch('http://localhost:8010/start-stream');
+                const result = await response.json();
+                showMessage(result.message, 'success');
+                
+                // Refresh data after starting stream
+                setTimeout(loadData, 2000);
+            } catch (error) {
+                showMessage(`Failed to start streaming: ${error.message}`, 'error');
+            }
+        }
+
+        async function checkHealth() {
+            try {
+                const response = await fetch('http://localhost:8010/health');
+                const health = await response.json();
+                
+                showMessage(`Health: ${health.status} | Stream keys: ${health.stream_keys} | Clients: ${health.clients}`, 'info');
+                
+                updateStatus(health.redis ? 'connected' : 'disconnected', 
+                            health.redis ? 'Connected' : 'Disconnected');
+            } catch (error) {
+                showMessage(`Health check failed: ${error.message}`, 'error');
+                updateStatus('disconnected', 'Error');
+            }
+        }
+
+        async function checkServerStatus() {
+            try {
+                const response = await fetch('http://localhost:8010/status');
+                if (response.ok) {
+                    updateServerStatus('connected', 'Online');
+                } else {
+                    updateServerStatus('disconnected', 'Error');
+                }
+            } catch (error) {
+                updateServerStatus('disconnected', 'Offline');
+            }
+        }
+
+        function toggleAutoRefresh() {
+            const statusEl = document.getElementById('autoStatus');
+            
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+                statusEl.textContent = 'Off';
+                showMessage('Auto refresh disabled', 'info');
+            } else {
+                autoRefreshInterval = setInterval(loadData, 5000); // Every 5 seconds
+                statusEl.textContent = 'On (5s)';
+                showMessage('Auto refresh enabled (5 second intervals)', 'success');
+            }
+        }
+
+        function updateStatus(status, text) {
+            const statusEl = document.getElementById('dataStatus');
+            const textEl = document.getElementById('dataText');
+            
+            statusEl.className = `status-indicator ${status}`;
+            textEl.textContent = text;
+        }
+
+        function updateServerStatus(status, text) {
+            const statusEl = document.getElementById('serverStatus');
+            const textEl = document.getElementById('serverText');
+            
+            statusEl.className = `status-indicator ${status}`;
+            textEl.textContent = text;
+        }
+
+        function updateLastUpdateTime() {
+            document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+        }
+
+        function showMessage(message, type = 'info') {
+            const messageArea = document.getElementById('messageArea');
+            messageArea.innerHTML = `<div class="message ${type}">${message}</div>`;
+            
+            // Auto-clear success/info messages
+            if (type !== 'error') {
+                setTimeout(() => {
+                    messageArea.innerHTML = '';
+                }, 3000);
+            }
+        }
+
+        function clearMessage() {
+            document.getElementById('messageArea').innerHTML = '';
+        }
+
+        // Cleanup
+        window.addEventListener('beforeunload', () => {
+            if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+        });
+    </script>
+</body>
+</html>

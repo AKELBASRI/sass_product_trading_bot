@@ -325,7 +325,7 @@ docker exec trading-redis redis-cli keys "mt5:*"
 # Get a sample of actual Redis data
 docker exec trading-redis redis-cli get "mt5:ohlc:EURUSD:15" | head -c 200
 
-
+docker logs trading-redis
 # Docker Cleanup Commands
 
 # 1. First, stop ALL containers

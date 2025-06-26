@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🚀 MT5 Trading Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            margin-bottom: 10px;
+        }
+        
+        .status-bar {
+            background: rgba(255,255,255,0.15);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            backdrop-filter: blur(10px);
+        }
+        
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ff4444;
+            display: inline-block;
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-indicator.connected { background: #44ff44; }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        
+        .controls {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .btn {
+            background: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: white;
+            padding: 12px 24px;
+            margin: 0 10px;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+        
+        .btn:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-2px);
+        }
+        
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 25px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .symbol-card {
+            background: rgba(255,255,255,0.15);
+            border-radius: 15px;
+            padding: 25px;
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255,255,255,0.2);
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        
+        .symbol-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+        }
+        
+        .symbol-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.2);
+        }
+        
+        .symbol-name {
+            font-size: 1.6rem;
+            font-weight: bold;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .price-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .price-item {
+            text-align: center;
+            padding: 15px 10px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+        }
+        
+        .price-label {
+            font-size: 0.8rem;
+            opacity: 0.8;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .price-value {
+            font-size: 1.3rem;
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .bid { color: #ff6b6b; }
+        .ask { color: #51cf66; }
+        .spread { color: #ffd43b; }
+        
+        .last-update {
+            text-align: center;
+            font-size: 0.8rem;
+            opacity: 0.7;
+            margin-top: 15px;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 60px;
+            grid-column: 1/-1;
+        }
+        
+        .message {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            text-align: center;
+        }
+        
+        .error { background: rgba(255,68,68,0.2); border: 1px solid #ff4444; }
+        .success { background: rgba(68,255,68,0.2); border: 1px solid #44ff44; }
+        .info { background: rgba(68,170,255,0.2); border: 1px solid #44aaff; }
+        
+        @media (max-width: 768px) {
+            .dashboard { grid-template-columns: 1fr; }
+            .status-bar { flex-direction: column; gap: 10px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📊 Real-Time Trading Dashboard</h1>
+        <p>Live MT5 data streaming system</p>
+    </div>
+
+    <div class="status-bar">
+        <div>
+            <span class="status-indicator" id="wsStatus"></span>
+            <span>WebSocket: <span id="wsText">Connecting...</span></span>
+        </div>
+        <div>
+            <span class="status-indicator" id="dataStatus"></span>
+            <span>Data: <span id="dataText">Waiting...</span></span>
+        </div>
+        <div>
+            Last Update: <span id="lastUpdate">--:--:--</span>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button class="btn" onclick="startStream()">🚀 Start Stream</button>
+        <button class="btn" onclick="refreshData()">🔄 Refresh</button>
+        <button class="btn" onclick="checkHealth()">💊 Health Check</button>
+        <button class="btn" onclick="openReactDashboard()">⚛️ React Dashboard</button>
+    </div>
+
+    <div id="messageArea"></div>
+
+    <div class="dashboard" id="dashboard">
+        <div class="loading">
+            <div style="font-size: 1.2em;">🔄 Connecting to WebSocket...</div>
+        </div>
+    </div>
+
+    <script>
+        const symbols = ['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD'];
+        let ws = null;
+        let reconnectAttempts = 0;
+        let maxReconnectAttempts = 5;
+
+        function connect() {
+            const wsUrl = `ws://${window.location.hostname}:8010/ws`;
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                updateStatus('wsStatus', 'wsText', true, 'Connected');
+                reconnectAttempts = 0;
+                subscribeToSymbols();
+                createCards();
+                clearMessage();
+            };
+            
+            ws.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                if (message.type === 'tick') {
+                    updateCard(message.symbol, message.data);
+                    updateStatus('dataStatus', 'dataText', true, 'Live');
+                    updateLastUpdateTime();
+                }
+            };
+            
+            ws.onclose = () => {
+                console.log('WebSocket disconnected');
+                updateStatus('wsStatus', 'wsText', false, 'Disconnected');
+                attemptReconnect();
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                updateStatus('wsStatus', 'wsText', false, 'Error');
+            };
+        }
+        
+        function attemptReconnect() {
+            if (reconnectAttempts < maxReconnectAttempts) {
+                reconnectAttempts++;
+                const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 10000);
+                
+                showMessage(`Reconnecting in ${delay/1000}s (attempt ${reconnectAttempts})...`, 'info');
+                
+                setTimeout(() => {
+                    connect();
+                }, delay);
+            } else {
+                showMessage('Failed to reconnect. Please refresh the page.', 'error');
+            }
+        }
+        
+        function subscribeToSymbols() {
+            symbols.forEach(symbol => {
+                ws.send(JSON.stringify({action: 'subscribe', symbol: symbol}));
+            });
+        }
+        
+        function createCards() {
+            const dashboard = document.getElementById('dashboard');
+            dashboard.innerHTML = '';
+            
+            symbols.forEach(symbol => {
+                const card = document.createElement('div');
+                card.className = 'symbol-card';
+                card.id = `card-${symbol}`;
+                card.innerHTML = `
+                    <div class="symbol-name">${symbol}</div>
+                    <div class="price-grid">
+                        <div class="price-item">
+                            <div class="price-label">Bid</div>
+                            <div class="price-value bid" id="bid-${symbol}">--.-----</div>
+                        </div>
+                        <div class="price-item">
+                            <div class="price-label">Ask</div>
+                            <div class="price-value ask" id="ask-${symbol}">--.-----</div>
+                        </div>
+                        <div class="price-item">
+                            <div class="price-label">Spread</div>
+                            <div class="price-value spread" id="spread-${symbol}">-- pips</div>
+                        </div>
+                    </div>
+                    <div class="last-update" id="update-${symbol}">Waiting...</div>
+                `;
+                dashboard.appendChild(card);
+            });
+        }
+        
+        function updateCard(symbol, data) {
+            document.getElementById(`bid-${symbol}`).textContent = data.bid.toFixed(5);
+            document.getElementById(`ask-${symbol}`).textContent = data.ask.toFixed(5);
+            document.getElementById(`spread-${symbol}`).textContent = `${data.spread_pips} pips`;
+            document.getElementById(`update-${symbol}`).textContent = new Date().toLocaleTimeString();
+        }
+        
+        function updateStatus(indicatorId, textId, connected, text) {
+            document.getElementById(indicatorId).className = `status-indicator ${connected ? 'connected' : ''}`;
+            document.getElementById(textId).textContent = text;
+        }
+        
+        function updateLastUpdateTime() {
+            document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+        }
+        
+        async function startStream() {
+            try {
+                const response = await fetch('/start-stream');
+                const result = await response.json();
+                showMessage(result.message, 'success');
+            } catch (error) {
+                showMessage(`Failed to start stream: ${error.message}`, 'error');
+            }
+        }
+        
+        async function refreshData() {
+            try {
+                showMessage('Refreshing...', 'info');
+                const response = await fetch('/status');
+                const status = await response.json();
+                showMessage(`Status: Streaming=${status.streaming}, Clients=${status.clients}, Keys=${status.stream_keys}`, 'info');
+            } catch (error) {
+                showMessage(`Refresh failed: ${error.message}`, 'error');
+            }
+        }
+        
+        async function checkHealth() {
+            try {
+                const response = await fetch('/health');
+                const health = await response.json();
+                showMessage(`Health: ${health.status} | Redis: ${health.redis} | MT5: ${health.mt5}`, 'info');
+            } catch (error) {
+                showMessage(`Health check failed: ${error.message}`, 'error');
+            }
+        }
+        
+        function openReactDashboard() {
+            window.open('http://localhost:3000', '_blank');
+        }
+        
+        function showMessage(message, type = 'info') {
+            const messageArea = document.getElementById('messageArea');
+            messageArea.innerHTML = `<div class="message ${type}">${message}</div>`;
+            
+            if (type !== 'error') {
+                setTimeout(() => {
+                    messageArea.innerHTML = '';
+                }, 3000);
+            }
+        }
+        
+        function clearMessage() {
+            document.getElementById('messageArea').innerHTML = '';
+        }
+        
+        // Auto-connect when page loads
+        window.onload = connect;
+    </script>
+</body>
+</html>
